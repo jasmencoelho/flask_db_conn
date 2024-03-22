@@ -95,21 +95,32 @@ def download():
             query = f'SELECT * FROM {table_name};'
             gdf = gpd.read_postgis(query, conn) 
             if not gdf.empty:
-                # Save GeoDataFrame to shapefile in memory
-                shp_buffer = BytesIO()
-                gdf.to_file(shp_buffer, driver='ESRI Shapefile')
-                shp_buffer.seek(0)
-                return send_file(shp_buffer, as_attachment=True, download_name=f'{table_name}.zip')
+                # Create a temporary directory to store the shapefile
+                temp_dir = 'temp_shapefile'
+                os.makedirs(temp_dir, exist_ok=True)
+                
+                # Save GeoDataFrame to shapefile
+                temp_shapefile = os.path.join(temp_dir, table_name)
+                gdf.to_file(temp_shapefile, driver='ESRI Shapefile')
+                
+                # Create a zip file containing the shapefile
+                zip_file = f'{table_name}.zip'
+                shutil.make_archive(os.path.join('temp_zip', table_name), 'zip', temp_dir)
+                
+                # Send the zip file as an attachment
+                return send_file(os.path.join('temp_zip', zip_file), as_attachment=True, download_name=zip_file)
             else:
                 return 'Error: GeoDataFrame is empty.'
         except psycopg2.Error as e:
             print("Error executing query:", e)
             return 'Error: Unable to fetch data from the database.'
         finally:
+            # Clean up temporary files and directories
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            shutil.rmtree('temp_zip', ignore_errors=True)
             # Close the connection
             conn.close()
     else:
         return 'Error: Unable to connect to the database.'
-
 if __name__ == '__main__':
     app.run(debug=True)
